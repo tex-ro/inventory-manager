@@ -8,161 +8,31 @@
     <style>
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner { animation: spin 1s linear infinite; }
+        * { -webkit-tap-highlight-color: transparent; }
+        button { touch-action: manipulation; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 to-blue-100 min-h-screen">
     <div id="root"></div>
     
-    <script type="module">
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDgMPg7OXnYW03cRKw2Gs7CMJXeY6WqZai0kI5zQ8ysYwqMu0RMUyUZC4CxOsQOWKi/exec';
+    <script>
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz5IrzT5jTnsHOPRiiTvnyxRCSVrjrqrZ6jSfYYnrqz9AZdlBox6QI-34ewybZyFNqu/exec';
         
-        let products = [];
-        let categories = ['Electronics', 'Clothing', 'Food', 'Furniture', 'Books', 'Others'];
-        let searchTerm = '';
-        let filterCategory = 'All';
-        let filterStatus = 'All';
-        let scanning = false;
-        let scanAction = null;
-        let showAddForm = false;
-        let editingProduct = null;
-        let showSettings = false;
-        let defaultThreshold = 10;
-        let syncing = false;
-        let lastSync = null;
-        let newProduct = {
-            productCode: '',
-            barcode: '',
-            name: '',
-            category: 'Others',
-            openingStock: 0,
-            purchased: 0,
-            sold: 0,
-            unitCost: 0,
-            threshold: 10
-        };
-
-        // Load data from Google Sheets on startup
-        async function loadFromGoogleSheets() {
-            try {
-                syncing = true;
-                render();
-                const response = await fetch(GOOGLE_SCRIPT_URL);
-                const data = await response.json();
-                if (data.products && data.products.length > 0) {
-                    products = data.products.map(p => ({...p, id: Date.now() + Math.random()}));
-                }
-                lastSync = new Date();
-                syncing = false;
-                render();
-            } catch (error) {
-                console.error('Failed to load from Google Sheets:', error);
-                syncing = false;
-                render();
-            }
-        }
-
-        // Save data to Google Sheets
-        async function saveToGoogleSheets() {
-            try {
-                syncing = true;
-                render();
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ products })
-                });
-                lastSync = new Date();
-                syncing = false;
-                render();
-            } catch (error) {
-                console.error('Failed to save to Google Sheets:', error);
-                syncing = false;
-                render();
-            }
-        }
-
-        function calculateCurrentStock(product) {
-            return product.openingStock + product.purchased - product.sold;
-        }
-
-        function calculateInventoryValue(product) {
-            return calculateCurrentStock(product) * product.unitCost;
-        }
-
-        function getStatus(product) {
-            const currentStock = calculateCurrentStock(product);
-            if (currentStock <= 0) return { label: 'Out of Stock', color: 'text-red-600 bg-red-100' };
-            if (currentStock <= product.threshold) return { label: 'Low Stock', color: 'text-orange-600 bg-orange-100' };
-            return { label: 'OK', color: 'text-green-600 bg-green-100' };
-        }
-
-        function processBarcodeAction(barcode) {
-            const product = products.find(p => p.barcode === barcode || p.productCode === barcode);
-            
-            if (scanAction === 'purchase' && product) {
-                updateTransaction(product.id, 'purchased', 1);
-            } else if (scanAction === 'sale' && product) {
-                updateTransaction(product.id, 'sold', 1);
-            } else if (!product) {
-                newProduct.barcode = barcode;
-                showAddForm = true;
-                scanning = false;
-                render();
-            }
-        }
-
-        function updateTransaction(productId, type, amount) {
-            products = products.map(p => 
-                p.id === productId 
-                    ? { ...p, [type]: Math.max(0, p[type] + amount) }
-                    : p
-            );
-            saveToGoogleSheets();
-            render();
-        }
-
-        function addProduct() {
-            if (!newProduct.name || !newProduct.productCode) {
-                alert('Please fill in Product Code and Name');
-                return;
-            }
-            
-            const product = {
-                id: Date.now() + Math.random(),
-                ...newProduct,
-                openingStock: Number(newProduct.openingStock),
-                purchased: Number(newProduct.purchased),
-                sold: Number(newProduct.sold),
-                unitCost: Number(newProduct.unitCost),
-                threshold: Number(newProduct.threshold)
-            };
-            
-            products.push(product);
-            resetForm();
-            saveToGoogleSheets();
-            render();
-        }
-
-        function updateProduct() {
-            products = products.map(p => 
-                p.id === editingProduct.id ? { ...editingProduct } : p
-            );
-            editingProduct = null;
-            saveToGoogleSheets();
-            render();
-        }
-
-        function deleteProduct(productId) {
-            if (confirm('Are you sure you want to delete this product?')) {
-                products = products.filter(p => p.id !== productId);
-                saveToGoogleSheets();
-                render();
-            }
-        }
-
-        function resetForm() {
-            newProduct = {
+        const App = {
+            products: [],
+            categories: ['Electronics', 'Clothing', 'Food', 'Furniture', 'Books', 'Others'],
+            searchTerm: '',
+            filterCategory: 'All',
+            filterStatus: 'All',
+            scanning: false,
+            scanAction: null,
+            showAddForm: false,
+            editingProduct: null,
+            showSettings: false,
+            defaultThreshold: 10,
+            syncing: false,
+            lastSync: null,
+            newProduct: {
                 productCode: '',
                 barcode: '',
                 name: '',
@@ -171,352 +41,469 @@
                 purchased: 0,
                 sold: 0,
                 unitCost: 0,
-                threshold: defaultThreshold
-            };
-            showAddForm = false;
-            scanning = false;
-        }
+                threshold: 10
+            },
 
-        function startScanning(action) {
-            scanAction = action;
-            scanning = true;
-            render();
-            setTimeout(() => document.getElementById('barcodeInput')?.focus(), 100);
-        }
+            async loadFromGoogleSheets() {
+                try {
+                    this.syncing = true;
+                    this.render();
+                    const response = await fetch(GOOGLE_SCRIPT_URL);
+                    const data = await response.json();
+                    if (data.products && data.products.length > 0) {
+                        this.products = data.products.map(p => ({...p, id: Date.now() + Math.random()}));
+                    }
+                    this.lastSync = new Date();
+                } catch (error) {
+                    console.error('Load error:', error);
+                    alert('Failed to load data from Google Sheets. Check console for details.');
+                } finally {
+                    this.syncing = false;
+                    this.render();
+                }
+            },
 
-        const totalInventoryValue = products.reduce((sum, p) => sum + calculateInventoryValue(p), 0);
-        const lowStockCount = products.filter(p => {
-            const status = getStatus(p);
-            return status.label === 'Low Stock' || status.label === 'Out of Stock';
-        }).length;
+            async saveToGoogleSheets() {
+                try {
+                    this.syncing = true;
+                    this.render();
+                    await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ products: this.products })
+                    });
+                    this.lastSync = new Date();
+                    setTimeout(() => this.loadFromGoogleSheets(), 1000);
+                } catch (error) {
+                    console.error('Save error:', error);
+                } finally {
+                    this.syncing = false;
+                    this.render();
+                }
+            },
 
-        const filteredProducts = products.filter(p => {
-            const matchesSearch = 
-                p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.productCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (p.barcode && p.barcode.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                p.category.toLowerCase().includes(searchTerm.toLowerCase());
-            
-            const matchesCategory = filterCategory === 'All' || p.category === filterCategory;
-            const status = getStatus(p);
-            const matchesStatus = filterStatus === 'All' || status.label === filterStatus;
-            
-            return matchesSearch && matchesCategory && matchesStatus;
-        });
+            calculateCurrentStock(product) {
+                return product.openingStock + product.purchased - product.sold;
+            },
 
-        function render() {
-            const app = document.getElementById('root');
-            app.innerHTML = `
-                <div class="max-w-7xl mx-auto p-4">
-                    <!-- Header -->
-                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center gap-3">
-                                <svg class="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                </svg>
-                                <div>
-                                    <h1 class="text-3xl font-bold text-gray-800">Inventory Manager</h1>
-                                    <p class="text-gray-500 text-sm">Track stock, purchases, and sales</p>
-                                </div>
-                            </div>
-                            <div class="flex gap-3 items-center">
-                                ${syncing ? `
-                                    <div class="flex items-center gap-2 text-blue-600">
-                                        <svg class="spinner w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                                        </svg>
-                                        <span class="text-sm">Syncing...</span>
-                                    </div>
-                                ` : lastSync ? `
-                                    <div class="text-xs text-gray-500">
-                                        Last synced: ${lastSync.toLocaleTimeString()}
-                                    </div>
-                                ` : ''}
-                                <button onclick="showSettings = true; render()" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200">
-                                    ⚙️ Settings
-                                </button>
-                                <button onclick="showAddForm = true; render()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                                    ➕ Add Product
-                                </button>
-                            </div>
-                        </div>
+            calculateInventoryValue(product) {
+                return this.calculateCurrentStock(product) * product.unitCost;
+            },
 
-                        <!-- Stats Dashboard -->
-                        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-4 rounded-lg">
-                                <div class="text-sm font-medium mb-2">💰 Total Value</div>
-                                <p class="text-2xl font-bold">₹${totalInventoryValue.toFixed(2)}</p>
-                            </div>
-                            <div class="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-4 rounded-lg">
-                                <div class="text-sm font-medium mb-2">📦 Products</div>
-                                <p class="text-2xl font-bold">${products.length}</p>
-                            </div>
-                            <div class="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-4 rounded-lg">
-                                <div class="text-sm font-medium mb-2">⚠️ Low Stock</div>
-                                <p class="text-2xl font-bold">${lowStockCount}</p>
-                            </div>
-                            <div class="bg-gradient-to-br from-green-500 to-green-600 text-white p-4 rounded-lg">
-                                <div class="text-sm font-medium mb-2">📈 Purchased</div>
-                                <p class="text-2xl font-bold">${products.reduce((sum, p) => sum + p.purchased, 0)}</p>
-                            </div>
-                            <div class="bg-gradient-to-br from-red-500 to-red-600 text-white p-4 rounded-lg">
-                                <div class="text-sm font-medium mb-2">📉 Sold</div>
-                                <p class="text-2xl font-bold">${products.reduce((sum, p) => sum + p.sold, 0)}</p>
-                            </div>
-                        </div>
-                    </div>
+            getStatus(product) {
+                const currentStock = this.calculateCurrentStock(product);
+                if (currentStock <= 0) return { label: 'Out of Stock', color: 'text-red-600 bg-red-100' };
+                if (currentStock <= product.threshold) return { label: 'Low Stock', color: 'text-orange-600 bg-orange-100' };
+                return { label: 'OK', color: 'text-green-600 bg-green-100' };
+            },
 
-                    <!-- Barcode Scanner -->
-                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-                        <h2 class="text-xl font-bold mb-4">🔍 Barcode Scanner</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button onclick="startScanning('purchase')" class="bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-4 rounded-lg font-semibold hover:from-green-700 hover:to-green-800">
-                                🛒 Scan for Purchase Entry
-                            </button>
-                            <button onclick="startScanning('sale')" class="bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-4 rounded-lg font-semibold hover:from-red-700 hover:to-red-800">
-                                💰 Scan for Sales Entry
-                            </button>
-                        </div>
-                        
-                        ${scanning ? `
-                            <div class="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
-                                <p class="font-semibold text-blue-800 mb-2">
-                                    ${scanAction === 'purchase' ? '📦 Scan to record PURCHASE' : '💰 Scan to record SALE'}
-                                </p>
-                                <input
-                                    id="barcodeInput"
-                                    type="text"
-                                    placeholder="Scan barcode or type and press Enter..."
-                                    class="w-full px-4 py-3 border-2 border-blue-400 rounded-lg focus:outline-none focus:border-blue-600 text-lg"
-                                    onkeypress="if(event.key === 'Enter' && event.target.value.trim()) { processBarcodeAction(event.target.value.trim()); event.target.value = ''; }"
-                                />
-                                <button onclick="scanning = false; scanAction = null; render()" class="mt-2 text-sm text-blue-700 hover:text-blue-900 font-medium">
-                                    Cancel Scanning
-                                </button>
-                            </div>
-                        ` : ''}
-                    </div>
+            processBarcodeAction(barcode) {
+                const product = this.products.find(p => p.barcode === barcode || p.productCode === barcode);
+                
+                if (this.scanAction === 'purchase' && product) {
+                    this.updateTransaction(product.id, 'purchased', 1);
+                } else if (this.scanAction === 'sale' && product) {
+                    this.updateTransaction(product.id, 'sold', 1);
+                } else if (!product) {
+                    this.newProduct.barcode = barcode;
+                    this.showAddForm = true;
+                    this.scanning = false;
+                    this.render();
+                }
+            },
 
-                    <!-- Filters -->
-                    <div class="bg-white rounded-xl shadow-lg p-4 mb-6">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div class="md:col-span-2">
-                                <input
-                                    type="text"
-                                    placeholder="🔍 Search by name, code, barcode..."
-                                    value="${searchTerm}"
-                                    oninput="searchTerm = this.value; render()"
-                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                                />
-                            </div>
-                            <select onchange="filterCategory = this.value; render()" class="px-4 py-2 border rounded-lg">
-                                <option value="All">All Categories</option>
-                                ${categories.map(cat => `<option value="${cat}" ${filterCategory === cat ? 'selected' : ''}>${cat}</option>`).join('')}
-                            </select>
-                            <select onchange="filterStatus = this.value; render()" class="px-4 py-2 border rounded-lg">
-                                <option value="All" ${filterStatus === 'All' ? 'selected' : ''}>All Status</option>
-                                <option value="OK" ${filterStatus === 'OK' ? 'selected' : ''}>OK</option>
-                                <option value="Low Stock" ${filterStatus === 'Low Stock' ? 'selected' : ''}>Low Stock</option>
-                                <option value="Out of Stock" ${filterStatus === 'Out of Stock' ? 'selected' : ''}>Out of Stock</option>
-                            </select>
-                        </div>
-                    </div>
+            updateTransaction(productId, type, amount) {
+                this.products = this.products.map(p => 
+                    p.id === productId 
+                        ? { ...p, [type]: Math.max(0, p[type] + amount) }
+                        : p
+                );
+                this.saveToGoogleSheets();
+            },
 
-                    <!-- Products Table -->
-                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead class="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-                                    <tr>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Code</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Product</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Category</th>
-                                        <th class="px-4 py-3 text-right text-sm font-semibold">Opening</th>
-                                        <th class="px-4 py-3 text-right text-sm font-semibold">Purchased</th>
-                                        <th class="px-4 py-3 text-right text-sm font-semibold">Sold</th>
-                                        <th class="px-4 py-3 text-right text-sm font-semibold">Current</th>
-                                        <th class="px-4 py-3 text-right text-sm font-semibold">Cost</th>
-                                        <th class="px-4 py-3 text-right text-sm font-semibold">Value</th>
-                                        <th class="px-4 py-3 text-center text-sm font-semibold">Status</th>
-                                        <th class="px-4 py-3 text-center text-sm font-semibold">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${filteredProducts.map(product => {
-                                        const currentStock = calculateCurrentStock(product);
-                                        const inventoryValue = calculateInventoryValue(product);
-                                        const status = getStatus(product);
-                                        return `
-                                            <tr class="border-b hover:bg-blue-50">
-                                                <td class="px-4 py-3 font-mono text-sm font-semibold text-blue-600">${product.productCode}</td>
-                                                <td class="px-4 py-3 font-semibold">${product.name}</td>
-                                                <td class="px-4 py-3"><span class="px-2 py-1 bg-gray-100 rounded text-xs">${product.category}</span></td>
-                                                <td class="px-4 py-3 text-right text-gray-600">${product.openingStock}</td>
-                                                <td class="px-4 py-3 text-right">
-                                                    <div class="flex items-center justify-end gap-1">
-                                                        <button onclick="updateTransaction('${product.id}', 'purchased', 1)" class="p-1 text-green-600 hover:bg-green-50 rounded">➕</button>
-                                                        <span class="text-green-600 font-semibold min-w-[30px] text-center">${product.purchased}</span>
-                                                        <button onclick="updateTransaction('${product.id}', 'purchased', -1)" class="p-1 text-red-600 hover:bg-red-50 rounded">➖</button>
-                                                    </div>
-                                                </td>
-                                                <td class="px-4 py-3 text-right">
-                                                    <div class="flex items-center justify-end gap-1">
-                                                        <button onclick="updateTransaction('${product.id}', 'sold', 1)" class="p-1 text-green-600 hover:bg-green-50 rounded">➕</button>
-                                                        <span class="text-red-600 font-semibold min-w-[30px] text-center">${product.sold}</span>
-                                                        <button onclick="updateTransaction('${product.id}', 'sold', -1)" class="p-1 text-red-600 hover:bg-red-50 rounded">➖</button>
-                                                    </div>
-                                                </td>
-                                                <td class="px-4 py-3 text-right">
-                                                    <span class="font-bold text-lg ${currentStock <= 0 ? 'text-red-600' : currentStock <= product.threshold ? 'text-orange-600' : 'text-gray-800'}">
-                                                        ${currentStock}
-                                                    </span>
-                                                </td>
-                                                <td class="px-4 py-3 text-right">₹${product.unitCost.toFixed(2)}</td>
-                                                <td class="px-4 py-3 text-right font-semibold text-blue-600">₹${inventoryValue.toFixed(2)}</td>
-                                                <td class="px-4 py-3 text-center">
-                                                    <span class="px-3 py-1 rounded-full text-xs font-bold ${status.color}">${status.label}</span>
-                                                </td>
-                                                <td class="px-4 py-3">
-                                                    <div class="flex justify-center gap-2">
-                                                        <button onclick="editingProduct = products.find(p => p.id === '${product.id}'); render()" class="p-1 text-blue-600 hover:bg-blue-50 rounded">✏️</button>
-                                                        <button onclick="deleteProduct('${product.id}')" class="p-1 text-red-600 hover:bg-red-50 rounded">🗑️</button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                        ${filteredProducts.length === 0 ? `
-                            <div class="text-center py-12 text-gray-500">
-                                <p class="text-lg">📦 No products found</p>
-                                <p class="text-sm">Add your first product to get started</p>
-                            </div>
-                        ` : ''}
-                    </div>
+            addProduct() {
+                const code = document.getElementById('productCode').value.trim();
+                const name = document.getElementById('name').value.trim();
+                
+                if (!code || !name) {
+                    alert('Please fill in Product Code and Name');
+                    return;
+                }
+                
+                const product = {
+                    id: Date.now() + Math.random(),
+                    productCode: code,
+                    barcode: document.getElementById('barcode').value.trim(),
+                    name: name,
+                    category: document.getElementById('category').value,
+                    openingStock: Number(document.getElementById('openingStock').value) || 0,
+                    purchased: 0,
+                    sold: 0,
+                    unitCost: Number(document.getElementById('unitCost').value) || 0,
+                    threshold: Number(document.getElementById('threshold').value) || this.defaultThreshold
+                };
+                
+                this.products.push(product);
+                this.resetForm();
+                this.saveToGoogleSheets();
+            },
 
-                    <!-- Add/Edit Product Modal -->
-                    ${(showAddForm || editingProduct) ? `
-                        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                                <div class="flex justify-between items-center mb-6">
-                                    <h2 class="text-2xl font-bold">${editingProduct ? 'Edit Product' : 'Add New Product'}</h2>
-                                    <button onclick="showAddForm = false; editingProduct = null; resetForm(); render()" class="text-gray-500 hover:text-gray-700 text-2xl">✖️</button>
-                                </div>
-                                
-                                <div class="grid grid-cols-2 gap-4">
+            updateProduct() {
+                const product = this.editingProduct;
+                product.productCode = document.getElementById('productCode').value.trim();
+                product.barcode = document.getElementById('barcode').value.trim();
+                product.name = document.getElementById('name').value.trim();
+                product.category = document.getElementById('category').value;
+                product.unitCost = Number(document.getElementById('unitCost').value) || 0;
+                product.openingStock = Number(document.getElementById('openingStock').value) || 0;
+                product.threshold = Number(document.getElementById('threshold').value) || this.defaultThreshold;
+                
+                this.products = this.products.map(p => p.id === product.id ? product : p);
+                this.editingProduct = null;
+                this.saveToGoogleSheets();
+            },
+
+            deleteProduct(productId) {
+                if (confirm('Are you sure you want to delete this product?')) {
+                    this.products = this.products.filter(p => p.id !== productId);
+                    this.saveToGoogleSheets();
+                }
+            },
+
+            resetForm() {
+                this.newProduct = {
+                    productCode: '',
+                    barcode: '',
+                    name: '',
+                    category: 'Others',
+                    openingStock: 0,
+                    purchased: 0,
+                    sold: 0,
+                    unitCost: 0,
+                    threshold: this.defaultThreshold
+                };
+                this.showAddForm = false;
+                this.scanning = false;
+            },
+
+            startScanning(action) {
+                this.scanAction = action;
+                this.scanning = true;
+                this.render();
+                setTimeout(() => {
+                    const input = document.getElementById('barcodeInput');
+                    if (input) input.focus();
+                }, 100);
+            },
+
+            getFilteredProducts() {
+                return this.products.filter(p => {
+                    const matchesSearch = 
+                        p.name.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                        p.productCode.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                        (p.barcode && p.barcode.toLowerCase().includes(this.searchTerm.toLowerCase())) ||
+                        p.category.toLowerCase().includes(this.searchTerm.toLowerCase());
+                    
+                    const matchesCategory = this.filterCategory === 'All' || p.category === this.filterCategory;
+                    const status = this.getStatus(p);
+                    const matchesStatus = this.filterStatus === 'All' || status.label === this.filterStatus;
+                    
+                    return matchesSearch && matchesCategory && matchesStatus;
+                });
+            },
+
+            render() {
+                const totalInventoryValue = this.products.reduce((sum, p) => sum + this.calculateInventoryValue(p), 0);
+                const lowStockCount = this.products.filter(p => {
+                    const status = this.getStatus(p);
+                    return status.label === 'Low Stock' || status.label === 'Out of Stock';
+                }).length;
+                const filteredProducts = this.getFilteredProducts();
+
+                const app = document.getElementById('root');
+                app.innerHTML = `
+                    <div class="max-w-7xl mx-auto p-2 sm:p-4">
+                        <!-- Header -->
+                        <div class="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+                            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 sm:mb-6">
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-8 h-8 sm:w-10 sm:h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                    </svg>
                                     <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1">Product Code *</label>
-                                        <input type="text" id="productCode" value="${editingProduct ? editingProduct.productCode : newProduct.productCode}" 
-                                            class="w-full px-4 py-2 border rounded-lg" placeholder="PRD001">
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1">Barcode</label>
-                                        <input type="text" id="barcode" value="${editingProduct ? editingProduct.barcode : newProduct.barcode}" 
-                                            class="w-full px-4 py-2 border rounded-lg" placeholder="1234567890">
-                                    </div>
-                                    <div class="col-span-2">
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1">Product Name *</label>
-                                        <input type="text" id="name" value="${editingProduct ? editingProduct.name : newProduct.name}" 
-                                            class="w-full px-4 py-2 border rounded-lg" placeholder="Wireless Mouse">
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1">Category</label>
-                                        <select id="category" class="w-full px-4 py-2 border rounded-lg">
-                                            ${categories.map(cat => `<option value="${cat}" ${(editingProduct ? editingProduct.category : newProduct.category) === cat ? 'selected' : ''}>${cat}</option>`).join('')}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1">Unit Cost (₹)</label>
-                                        <input type="number" id="unitCost" value="${editingProduct ? editingProduct.unitCost : newProduct.unitCost}" 
-                                            class="w-full px-4 py-2 border rounded-lg" step="0.01" placeholder="0.00">
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1">Opening Stock</label>
-                                        <input type="number" id="openingStock" value="${editingProduct ? editingProduct.openingStock : newProduct.openingStock}" 
-                                            class="w-full px-4 py-2 border rounded-lg" placeholder="0">
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1">Stock Threshold</label>
-                                        <input type="number" id="threshold" value="${editingProduct ? editingProduct.threshold : newProduct.threshold}" 
-                                            class="w-full px-4 py-2 border rounded-lg" placeholder="${defaultThreshold}">
+                                        <h1 class="text-xl sm:text-3xl font-bold text-gray-800">Inventory Manager</h1>
+                                        <p class="text-gray-500 text-xs sm:text-sm">Track stock, purchases, and sales</p>
                                     </div>
                                 </div>
-                                
-                                <button onclick="
-                                    if(editingProduct) {
-                                        editingProduct.productCode = document.getElementById('productCode').value;
-                                        editingProduct.barcode = document.getElementById('barcode').value;
-                                        editingProduct.name = document.getElementById('name').value;
-                                        editingProduct.category = document.getElementById('category').value;
-                                        editingProduct.unitCost = Number(document.getElementById('unitCost').value);
-                                        editingProduct.openingStock = Number(document.getElementById('openingStock').value);
-                                        editingProduct.threshold = Number(document.getElementById('threshold').value);
-                                        updateProduct();
-                                    } else {
-                                        newProduct.productCode = document.getElementById('productCode').value;
-                                        newProduct.barcode = document.getElementById('barcode').value;
-                                        newProduct.name = document.getElementById('name').value;
-                                        newProduct.category = document.getElementById('category').value;
-                                        newProduct.unitCost = Number(document.getElementById('unitCost').value);
-                                        newProduct.openingStock = Number(document.getElementById('openingStock').value);
-                                        newProduct.threshold = Number(document.getElementById('threshold').value);
-                                        addProduct();
-                                    }
-                                " class="mt-6 w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700">
-                                    💾 ${editingProduct ? 'Update Product' : 'Add Product'}
-                                </button>
-                            </div>
-                        </div>
-                    ` : ''}
-
-                    <!-- Settings Modal -->
-                    ${showSettings ? `
-                        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h2 class="text-2xl font-bold">⚙️ Settings</h2>
-                                    <button onclick="showSettings = false; render()" class="text-gray-500 hover:text-gray-700 text-2xl">✖️</button>
-                                </div>
-                                
-                                <div class="space-y-4">
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Default Stock Threshold</label>
-                                        <input type="number" id="defaultThresholdInput" value="${defaultThreshold}" 
-                                            class="w-full px-4 py-2 border rounded-lg" min="0">
-                                        <p class="text-xs text-gray-500 mt-1">Products below this quantity will be marked as Low Stock</p>
-                                    </div>
-                                    
-                                    <button onclick="
-                                        defaultThreshold = Number(document.getElementById('defaultThresholdInput').value);
-                                        showSettings = false;
-                                        render();
-                                    " class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700">
-                                        💾 Save Settings
+                                <div class="flex gap-2 w-full sm:w-auto">
+                                    ${this.syncing ? `
+                                        <div class="flex items-center gap-2 text-blue-600 text-sm">
+                                            <svg class="spinner w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                            </svg>
+                                            <span>Syncing...</span>
+                                        </div>
+                                    ` : this.lastSync ? `
+                                        <div class="text-xs text-gray-500">
+                                            ${this.lastSync.toLocaleTimeString()}
+                                        </div>
+                                    ` : ''}
+                                    <button onclick="App.showSettings = true; App.render()" class="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-200">
+                                        ⚙️
+                                    </button>
+                                    <button onclick="App.showAddForm = true; App.render()" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 flex-1 sm:flex-none">
+                                        ➕ Add
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }
+                        ` : ''}
 
-        // Make functions globally available
-        window.startScanning = startScanning;
-        window.processBarcodeAction = processBarcodeAction;
-        window.updateTransaction = updateTransaction;
-        window.addProduct = addProduct;
-        window.updateProduct = updateProduct;
-        window.deleteProduct = deleteProduct;
-        window.saveToGoogleSheets = saveToGoogleSheets;
-        window.render = render;
+                        <!-- Settings Modal -->
+                        ${this.showSettings ? `
+                            <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div class="bg-white rounded-xl shadow-2xl p-4 sm:p-6 w-full max-w-md">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-xl sm:text-2xl font-bold">⚙️ Settings</h2>
+                                        <button onclick="App.showSettings = false; App.render()" class="text-gray-500 hover:text-gray-700 text-2xl">✖️</button>
+                                    </div>
+                                    
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-2">Default Stock Threshold</label>
+                                            <input type="number" id="defaultThresholdInput" value="${this.defaultThreshold}" 
+                                                class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base" min="0">
+                                            <p class="text-xs text-gray-500 mt-1">Products below this quantity will be marked as Low Stock</p>
+                                        </div>
+                                        
+                                        <button onclick="
+                                            App.defaultThreshold = Number(document.getElementById('defaultThresholdInput').value);
+                                            App.showSettings = false;
+                                            App.render();
+                                        " class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 active:scale-95 text-sm sm:text-base">
+                                            💾 Save Settings
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            },
 
-        // Initial load
-        loadFromGoogleSheets();
-        render();
+            init() {
+                this.loadFromGoogleSheets();
+            }
+        };
+
+        // Start the app
+        App.init();
     </script>
 </body>
-</html>
+</html>>
+
+                            <!-- Stats -->
+                            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
+                                <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium mb-1 sm:mb-2">💰 Value</div>
+                                    <p class="text-lg sm:text-2xl font-bold">₹${totalInventoryValue.toFixed(0)}</p>
+                                </div>
+                                <div class="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium mb-1 sm:mb-2">📦 Products</div>
+                                    <p class="text-lg sm:text-2xl font-bold">${this.products.length}</p>
+                                </div>
+                                <div class="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium mb-1 sm:mb-2">⚠️ Low</div>
+                                    <p class="text-lg sm:text-2xl font-bold">${lowStockCount}</p>
+                                </div>
+                                <div class="bg-gradient-to-br from-green-500 to-green-600 text-white p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium mb-1 sm:mb-2">📈 Bought</div>
+                                    <p class="text-lg sm:text-2xl font-bold">${this.products.reduce((s, p) => s + p.purchased, 0)}</p>
+                                </div>
+                                <div class="bg-gradient-to-br from-red-500 to-red-600 text-white p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium mb-1 sm:mb-2">📉 Sold</div>
+                                    <p class="text-lg sm:text-2xl font-bold">${this.products.reduce((s, p) => s + p.sold, 0)}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scanner -->
+                        <div class="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+                            <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4">🔍 Barcode Scanner</h2>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                <button onclick="App.startScanning('purchase')" class="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-3 sm:px-6 sm:py-4 rounded-lg font-semibold text-sm sm:text-base hover:from-green-700 active:scale-95 transition">
+                                    🛒 Purchase Entry
+                                </button>
+                                <button onclick="App.startScanning('sale')" class="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 py-3 sm:px-6 sm:py-4 rounded-lg font-semibold text-sm sm:text-base hover:from-red-700 active:scale-95 transition">
+                                    💰 Sales Entry
+                                </button>
+                            </div>
+                            
+                            ${this.scanning ? `
+                                <div class="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
+                                    <p class="font-semibold text-blue-800 mb-2 text-sm sm:text-base">
+                                        ${this.scanAction === 'purchase' ? '📦 Scan to record PURCHASE' : '💰 Scan to record SALE'}
+                                    </p>
+                                    <input
+                                        id="barcodeInput"
+                                        type="text"
+                                        placeholder="Scan or type code..."
+                                        class="w-full px-4 py-3 border-2 border-blue-400 rounded-lg focus:outline-none focus:border-blue-600 text-base"
+                                        onkeypress="if(event.key === 'Enter' && event.target.value.trim()) { App.processBarcodeAction(event.target.value.trim()); event.target.value = ''; }"
+                                    />
+                                    <button onclick="App.scanning = false; App.scanAction = null; App.render()" class="mt-2 text-sm text-blue-700 hover:text-blue-900 font-medium">
+                                        Cancel
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Filters -->
+                        <div class="bg-white rounded-xl shadow-lg p-3 sm:p-4 mb-4 sm:mb-6">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+                                <div class="sm:col-span-2">
+                                    <input
+                                        type="text"
+                                        placeholder="🔍 Search..."
+                                        value="${this.searchTerm}"
+                                        oninput="App.searchTerm = this.value; App.render()"
+                                        class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm sm:text-base"
+                                    />
+                                </div>
+                                <select onchange="App.filterCategory = this.value; App.render()" class="px-3 py-2 border rounded-lg text-sm sm:text-base">
+                                    <option value="All">All Categories</option>
+                                    ${this.categories.map(cat => `<option value="${cat}" ${this.filterCategory === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                                </select>
+                                <select onchange="App.filterStatus = this.value; App.render()" class="px-3 py-2 border rounded-lg text-sm sm:text-base">
+                                    <option value="All">All Status</option>
+                                    <option value="OK">OK</option>
+                                    <option value="Low Stock">Low Stock</option>
+                                    <option value="Out of Stock">Out of Stock</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Products Table -->
+                        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs sm:text-sm">
+                                    <thead class="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+                                        <tr>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold">Code</th>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold">Product</th>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold hidden sm:table-cell">Open</th>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">Bought</th>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">Sold</th>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">Stock</th>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-center font-semibold hidden lg:table-cell">Status</th>
+                                            <th class="px-2 sm:px-4 py-2 sm:py-3 text-center font-semibold">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${filteredProducts.map(product => {
+                                            const currentStock = this.calculateCurrentStock(product);
+                                            const status = this.getStatus(product);
+                                            return `
+                                                <tr class="border-b hover:bg-blue-50">
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 font-mono font-semibold text-blue-600">${product.productCode}</td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 font-semibold">
+                                                        <div>${product.name}</div>
+                                                        <div class="text-xs text-gray-500 lg:hidden">${product.category}</div>
+                                                    </td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 text-right text-gray-600 hidden sm:table-cell">${product.openingStock}</td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                                        <div class="flex items-center justify-end gap-1">
+                                                            <button onclick="App.updateTransaction('${product.id}', 'purchased', 1)" class="p-1 text-green-600 hover:bg-green-50 rounded active:scale-95">➕</button>
+                                                            <span class="text-green-600 font-semibold w-6 text-center">${product.purchased}</span>
+                                                            <button onclick="App.updateTransaction('${product.id}', 'purchased', -1)" class="p-1 text-red-600 hover:bg-red-50 rounded active:scale-95">➖</button>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                                        <div class="flex items-center justify-end gap-1">
+                                                            <button onclick="App.updateTransaction('${product.id}', 'sold', 1)" class="p-1 text-green-600 hover:bg-green-50 rounded active:scale-95">➕</button>
+                                                            <span class="text-red-600 font-semibold w-6 text-center">${product.sold}</span>
+                                                            <button onclick="App.updateTransaction('${product.id}', 'sold', -1)" class="p-1 text-red-600 hover:bg-red-50 rounded active:scale-95">➖</button>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 text-right">
+                                                        <span class="font-bold text-base sm:text-lg ${currentStock <= 0 ? 'text-red-600' : currentStock <= product.threshold ? 'text-orange-600' : 'text-gray-800'}">
+                                                            ${currentStock}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 text-center hidden lg:table-cell">
+                                                        <span class="px-2 py-1 rounded-full text-xs font-bold ${status.color}">${status.label}</span>
+                                                    </td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3">
+                                                        <div class="flex justify-center gap-1 sm:gap-2">
+                                                            <button onclick="App.editingProduct = App.products.find(p => p.id === '${product.id}'); App.render()" class="p-1 text-blue-600 hover:bg-blue-50 rounded active:scale-95">✏️</button>
+                                                            <button onclick="App.deleteProduct('${product.id}')" class="p-1 text-red-600 hover:bg-red-50 rounded active:scale-95">🗑️</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            ${filteredProducts.length === 0 ? `
+                                <div class="text-center py-8 sm:py-12 text-gray-500">
+                                    <p class="text-base sm:text-lg">📦 No products found</p>
+                                    <p class="text-xs sm:text-sm mt-2">Add your first product to get started</p>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Add/Edit Modal -->
+                        ${(this.showAddForm || this.editingProduct) ? `
+                            <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div class="bg-white rounded-xl shadow-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                                    <div class="flex justify-between items-center mb-4 sm:mb-6">
+                                        <h2 class="text-xl sm:text-2xl font-bold">${this.editingProduct ? 'Edit Product' : 'Add Product'}</h2>
+                                        <button onclick="App.showAddForm = false; App.editingProduct = null; App.resetForm(); App.render()" class="text-gray-500 hover:text-gray-700 text-2xl">✖️</button>
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Product Code *</label>
+                                            <input type="text" id="productCode" value="${this.editingProduct ? this.editingProduct.productCode : this.newProduct.productCode}" 
+                                                class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base" placeholder="PRD001">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Barcode</label>
+                                            <input type="text" id="barcode" value="${this.editingProduct ? this.editingProduct.barcode : this.newProduct.barcode}" 
+                                                class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base" placeholder="123456">
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Product Name *</label>
+                                            <input type="text" id="name" value="${this.editingProduct ? this.editingProduct.name : this.newProduct.name}" 
+                                                class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base" placeholder="Product Name">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Category</label>
+                                            <select id="category" class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base">
+                                                ${this.categories.map(cat => `<option value="${cat}" ${(this.editingProduct ? this.editingProduct.category : this.newProduct.category) === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Unit Cost (₹)</label>
+                                            <input type="number" id="unitCost" value="${this.editingProduct ? this.editingProduct.unitCost : this.newProduct.unitCost}" 
+                                                class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base" step="0.01">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Opening Stock</label>
+                                            <input type="number" id="openingStock" value="${this.editingProduct ? this.editingProduct.openingStock : this.newProduct.openingStock}" 
+                                                class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-1">Threshold</label>
+                                            <input type="number" id="threshold" value="${this.editingProduct ? this.editingProduct.threshold : this.newProduct.threshold}" 
+                                                class="w-full px-3 sm:px-4 py-2 border rounded-lg text-sm sm:text-base">
+                                        </div>
+                                    </div>
+                                    
+                                    <button onclick="App.editingProduct ? App.updateProduct() : App.addProduct()" 
+                                        class="mt-4 sm:mt-6 w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 active:scale-95 text-sm sm:text-base">
+                                        💾 ${this.editingProduct ? 'Update' : 'Add'} Product
+                                    </button>
+                                </div>
+                            </div>
