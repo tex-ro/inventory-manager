@@ -25,7 +25,9 @@
             showSettings: false,
             defaultThreshold: 10,
             syncing: false,
-            lastSync: null
+            lastSync: null,
+            showLowStock: false,
+            scannedItems: []
         };
 
         async function loadData() {
@@ -70,6 +72,10 @@
             return product.openingStock + product.purchased - product.sold;
         }
 
+        function getInventoryValue(product) {
+            return getCurrentStock(product) * product.unitCost;
+        }
+
         function getStatus(product) {
             const stock = getCurrentStock(product);
             if (stock <= 0) return {label: 'Out', color: 'bg-red-100 text-red-600'};
@@ -94,7 +100,9 @@
                 purchased: 0,
                 sold: 0,
                 unitCost: Number(document.getElementById('pCost').value) || 0,
-                threshold: Number(document.getElementById('pThreshold').value) || state.defaultThreshold
+                threshold: Number(document.getElementById('pThreshold').value) || state.defaultThreshold,
+                supplierName: document.getElementById('pSupplierName').value.trim(),
+                supplierNumber: document.getElementById('pSupplierNumber').value.trim()
             });
             state.showAddForm = false;
             saveData();
@@ -109,6 +117,8 @@
             p.unitCost = Number(document.getElementById('pCost').value) || 0;
             p.openingStock = Number(document.getElementById('pOpening').value) || 0;
             p.threshold = Number(document.getElementById('pThreshold').value) || state.defaultThreshold;
+            p.supplierName = document.getElementById('pSupplierName').value.trim();
+            p.supplierNumber = document.getElementById('pSupplierNumber').value.trim();
             state.products = state.products.map(pr => pr.id === p.id ? p : pr);
             state.editingProduct = null;
             saveData();
@@ -131,18 +141,40 @@
         function startScan(action) {
             state.scanAction = action;
             state.scanning = true;
+            state.scannedItems = [];
             render();
             setTimeout(() => document.getElementById('scanInput')?.focus(), 100);
         }
 
         function processScan(barcode) {
             const product = state.products.find(p => p.barcode === barcode || p.productCode === barcode);
-            if (state.scanAction === 'purchase' && product) {
-                updateTransaction(product.id, 'purchased', 1);
-            } else if (state.scanAction === 'sale' && product) {
-                updateTransaction(product.id, 'sold', 1);
+            if (product) {
+                if (state.scanAction === 'purchase') {
+                    updateTransaction(product.id, 'purchased', 1);
+                } else if (state.scanAction === 'sale') {
+                    updateTransaction(product.id, 'sold', 1);
+                }
+                state.scannedItems.push({
+                    name: product.name,
+                    code: product.productCode,
+                    action: state.scanAction,
+                    time: new Date().toLocaleTimeString()
+                });
+            } else {
+                state.scannedItems.push({
+                    name: 'Unknown Product',
+                    code: barcode,
+                    action: 'error',
+                    time: new Date().toLocaleTimeString()
+                });
             }
+            render();
+            setTimeout(() => document.getElementById('scanInput')?.focus(), 100);
+        }
+
+        function stopScanning() {
             state.scanning = false;
+            state.scannedItems = [];
             render();
         }
 
@@ -161,10 +193,37 @@
             });
         }
 
+        function getLowStockProducts() {
+            return state.products.filter(p => {
+                const status = getStatus(p);
+                return status.label === 'Low' || status.label === 'Out';
+            });
+        }
+
+        function getTotalPurchases() {
+            return state.products.reduce((sum, p) => sum + p.purchased, 0);
+        }
+
+        function getTotalSales() {
+            return state.products.reduce((sum, p) => sum + p.sold, 0);
+        }
+
+        function getTotalPurchaseValue() {
+            return state.products.reduce((sum, p) => sum + (p.purchased * p.unitCost), 0);
+        }
+
+        function getTotalSalesValue() {
+            return state.products.reduce((sum, p) => sum + (p.sold * p.unitCost), 0);
+        }
+
         function render() {
-            const filtered = getFilteredProducts();
-            const totalValue = state.products.reduce((sum, p) => sum + (getCurrentStock(p) * p.unitCost), 0);
-            const lowStock = state.products.filter(p => getStatus(p).label !== 'OK').length;
+            const filtered = state.showLowStock ? getLowStockProducts() : getFilteredProducts();
+            const totalValue = state.products.reduce((sum, p) => sum + getInventoryValue(p), 0);
+            const lowStock = getLowStockProducts().length;
+            const totalPurchases = getTotalPurchases();
+            const totalSales = getTotalSales();
+            const totalPurchaseValue = getTotalPurchaseValue();
+            const totalSalesValue = getTotalSalesValue();
 
             document.getElementById('app').innerHTML = `
                 <div class="max-w-7xl mx-auto p-4">
@@ -176,22 +235,30 @@
                             </button>
                         </div>
                         
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                             <div class="bg-blue-100 p-4 rounded-lg">
-                                <div class="text-sm text-blue-600 font-medium">Total Value</div>
+                                <div class="text-sm text-blue-600 font-medium">Inventory Value</div>
                                 <div class="text-2xl font-bold text-blue-900">₹${totalValue.toFixed(0)}</div>
                             </div>
                             <div class="bg-purple-100 p-4 rounded-lg">
                                 <div class="text-sm text-purple-600 font-medium">Products</div>
                                 <div class="text-2xl font-bold text-purple-900">${state.products.length}</div>
                             </div>
-                            <div class="bg-orange-100 p-4 rounded-lg">
-                                <div class="text-sm text-orange-600 font-medium">Low Stock</div>
+                            <div class="bg-orange-100 p-4 rounded-lg cursor-pointer hover:bg-orange-200" onclick="state.showLowStock = !state.showLowStock; render()">
+                                <div class="text-sm text-orange-600 font-medium">Low Stock ⚠️</div>
                                 <div class="text-2xl font-bold text-orange-900">${lowStock}</div>
                             </div>
                             <div class="bg-green-100 p-4 rounded-lg">
-                                <div class="text-sm text-green-600 font-medium">Status</div>
-                                <div class="text-lg font-bold text-green-900">${state.syncing ? 'Syncing...' : 'Ready'}</div>
+                                <div class="text-sm text-green-600 font-medium">Total Purchases</div>
+                                <div class="text-xl font-bold text-green-900">${totalPurchases} (₹${totalPurchaseValue.toFixed(0)})</div>
+                            </div>
+                            <div class="bg-red-100 p-4 rounded-lg">
+                                <div class="text-sm text-red-600 font-medium">Total Sales</div>
+                                <div class="text-xl font-bold text-red-900">${totalSales} (₹${totalSalesValue.toFixed(0)})</div>
+                            </div>
+                            <div class="bg-teal-100 p-4 rounded-lg">
+                                <div class="text-sm text-teal-600 font-medium">Status</div>
+                                <div class="text-lg font-bold text-teal-900">${state.syncing ? 'Syncing...' : 'Ready'}</div>
                             </div>
                         </div>
                     </div>
@@ -208,32 +275,59 @@
                         </div>
                         ${state.scanning ? `
                             <div class="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h3 class="font-bold text-blue-900">Scanning for ${state.scanAction === 'purchase' ? 'Purchase 🛒' : 'Sale 💰'}</h3>
+                                    <button onclick="stopScanning()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600">Stop Scanning</button>
+                                </div>
                                 <input id="scanInput" type="text" placeholder="Scan barcode and press Enter..." 
-                                    class="w-full px-4 py-2 border rounded-lg" 
+                                    class="w-full px-4 py-2 border rounded-lg mb-3" 
                                     onkeypress="if(event.key==='Enter' && this.value.trim()){processScan(this.value.trim()); this.value='';}">
-                                <button onclick="state.scanning=false; render()" class="mt-2 text-blue-600 text-sm">Cancel</button>
+                                ${state.scannedItems.length > 0 ? `
+                                    <div class="mt-3 max-h-40 overflow-y-auto">
+                                        <h4 class="font-semibold mb-2">Scanned Items:</h4>
+                                        ${state.scannedItems.slice().reverse().map(item => `
+                                            <div class="p-2 mb-1 rounded ${item.action === 'error' ? 'bg-red-100' : 'bg-green-100'}">
+                                                <span class="font-semibold">${item.name}</span> - ${item.code} 
+                                                <span class="text-xs text-gray-600">(${item.time})</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
                             </div>
                         ` : ''}
                     </div>
 
-                    <div class="bg-white rounded-xl shadow-lg p-4 mb-6">
-                        <div class="grid md:grid-cols-3 gap-4">
-                            <input type="text" placeholder="🔍 Search..." 
-                                value="${state.searchTerm}"
-                                oninput="state.searchTerm=this.value; render()"
-                                class="px-4 py-2 border rounded-lg">
-                            <select onchange="state.filterCategory=this.value; render()" class="px-4 py-2 border rounded-lg">
-                                <option value="All">All Categories</option>
-                                ${state.categories.map(c => `<option value="${c}">${c}</option>`).join('')}
-                            </select>
-                            <select onchange="state.filterStatus=this.value; render()" class="px-4 py-2 border rounded-lg">
-                                <option value="All">All Status</option>
-                                <option value="OK">OK</option>
-                                <option value="Low">Low Stock</option>
-                                <option value="Out">Out of Stock</option>
-                            </select>
+                    ${state.showLowStock ? `
+                        <div class="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 mb-6">
+                            <div class="flex justify-between items-center">
+                                <h2 class="text-xl font-bold text-orange-900">⚠️ Low Stock Alert (${lowStock} items)</h2>
+                                <button onclick="state.showLowStock = false; render()" class="text-orange-600 hover:text-orange-800">
+                                    ✕ Close
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    ` : ''}
+
+                    ${!state.showLowStock ? `
+                        <div class="bg-white rounded-xl shadow-lg p-4 mb-6">
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <input type="text" placeholder="🔍 Search..." 
+                                    value="${state.searchTerm}"
+                                    oninput="state.searchTerm=this.value; render()"
+                                    class="px-4 py-2 border rounded-lg">
+                                <select onchange="state.filterCategory=this.value; render()" class="px-4 py-2 border rounded-lg">
+                                    <option value="All">All Categories</option>
+                                    ${state.categories.map(c => `<option value="${c}">${c}</option>`).join('')}
+                                </select>
+                                <select onchange="state.filterStatus=this.value; render()" class="px-4 py-2 border rounded-lg">
+                                    <option value="All">All Status</option>
+                                    <option value="OK">OK</option>
+                                    <option value="Low">Low Stock</option>
+                                    <option value="Out">Out of Stock</option>
+                                </select>
+                            </div>
+                        </div>
+                    ` : ''}
 
                     <div class="bg-white rounded-xl shadow-lg overflow-hidden">
                         <div class="overflow-x-auto">
@@ -243,10 +337,12 @@
                                         <th class="px-4 py-3 text-left">Code</th>
                                         <th class="px-4 py-3 text-left">Product</th>
                                         <th class="px-4 py-3 text-left">Category</th>
+                                        <th class="px-4 py-3 text-left">Supplier</th>
                                         <th class="px-4 py-3 text-right">Opening</th>
                                         <th class="px-4 py-3 text-right">Purchased</th>
                                         <th class="px-4 py-3 text-right">Sold</th>
                                         <th class="px-4 py-3 text-right">Stock</th>
+                                        <th class="px-4 py-3 text-right">Value</th>
                                         <th class="px-4 py-3 text-center">Status</th>
                                         <th class="px-4 py-3 text-center">Actions</th>
                                     </tr>
@@ -254,24 +350,36 @@
                                 <tbody>
                                     ${filtered.map(p => {
                                         const stock = getCurrentStock(p);
+                                        const value = getInventoryValue(p);
                                         const status = getStatus(p);
+                                        const purchaseValue = p.purchased * p.unitCost;
+                                        const salesValue = p.sold * p.unitCost;
                                         return `
                                             <tr class="border-b hover:bg-gray-50">
                                                 <td class="px-4 py-3 font-mono font-semibold text-blue-600">${p.productCode}</td>
                                                 <td class="px-4 py-3 font-semibold">${p.name}</td>
                                                 <td class="px-4 py-3 text-gray-600">${p.category}</td>
+                                                <td class="px-4 py-3 text-sm">
+                                                    ${p.supplierName ? `
+                                                        <div class="font-medium">${p.supplierName}</div>
+                                                        ${p.supplierNumber ? `<div class="text-gray-500">${p.supplierNumber}</div>` : ''}
+                                                    ` : '<span class="text-gray-400">-</span>'}
+                                                </td>
                                                 <td class="px-4 py-3 text-right">${p.openingStock}</td>
                                                 <td class="px-4 py-3 text-right">
                                                     <button onclick="updateTransaction(${p.id}, 'purchased', -1)" class="text-red-600 px-1">-</button>
                                                     <span class="font-semibold text-green-600 mx-2">${p.purchased}</span>
                                                     <button onclick="updateTransaction(${p.id}, 'purchased', 1)" class="text-green-600 px-1">+</button>
+                                                    <div class="text-xs text-gray-500">₹${purchaseValue.toFixed(0)}</div>
                                                 </td>
                                                 <td class="px-4 py-3 text-right">
                                                     <button onclick="updateTransaction(${p.id}, 'sold', -1)" class="text-red-600 px-1">-</button>
                                                     <span class="font-semibold text-red-600 mx-2">${p.sold}</span>
                                                     <button onclick="updateTransaction(${p.id}, 'sold', 1)" class="text-green-600 px-1">+</button>
+                                                    <div class="text-xs text-gray-500">₹${salesValue.toFixed(0)}</div>
                                                 </td>
                                                 <td class="px-4 py-3 text-right font-bold text-lg">${stock}</td>
+                                                <td class="px-4 py-3 text-right font-bold text-blue-900">₹${value.toFixed(0)}</td>
                                                 <td class="px-4 py-3 text-center">
                                                     <span class="px-3 py-1 rounded-full text-xs font-bold ${status.color}">${status.label}</span>
                                                 </td>
@@ -314,6 +422,16 @@
                                 <div class="md:col-span-2">
                                     <label class="block text-sm font-bold mb-1">Product Name *</label>
                                     <input type="text" id="pName" value="${state.editingProduct ? state.editingProduct.name : ''}" 
+                                        class="w-full px-4 py-2 border rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold mb-1">Supplier Name</label>
+                                    <input type="text" id="pSupplierName" value="${state.editingProduct ? (state.editingProduct.supplierName || '') : ''}" 
+                                        class="w-full px-4 py-2 border rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold mb-1">Supplier Number</label>
+                                    <input type="text" id="pSupplierNumber" value="${state.editingProduct ? (state.editingProduct.supplierNumber || '') : ''}" 
                                         class="w-full px-4 py-2 border rounded-lg">
                                 </div>
                                 <div>
